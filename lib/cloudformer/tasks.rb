@@ -6,14 +6,20 @@ module Cloudformer
  class Tasks < Rake::TaskLib
    def initialize(stack_name)
      @stack_name = stack_name
-     @stack =Stack.new(stack_name)
+     @stack = Stack.new(stack_name)
      if block_given?
        yield self
        define_tasks
      end
    end
 
-   attr_accessor :template, :parameters, :disable_rollback, :retry_delete, :capabilities
+   attr_accessor :template,
+                 :parameters,
+                 :disable_rollback,
+                 :retry_delete,
+                 :capabilities,
+                 :policy,
+                 :bucket
 
    private
    def define_tasks
@@ -35,7 +41,7 @@ module Cloudformer
         if retry_delete
           @stack.delete
         end
-       exit 1 unless @stack.apply(template, parameters, disable_rollback, capabilities)
+       exit 1 unless @stack.apply(template, parameters, disable_rollback, capabilities, policy, bucket)
      end
    end
 
@@ -82,6 +88,7 @@ module Cloudformer
        @stack.outputs
      end
    end
+
    def define_recreate_task
      desc "Recreate stack."
      task :recreate => [:delete, :apply, :outputs]
@@ -109,3 +116,4 @@ module Cloudformer
    end
  end
 end
+

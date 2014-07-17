@@ -19,8 +19,10 @@ class Stack
     return stack.exists?
   end
 
-  def apply(template_file, parameters, disable_rollback=false, capabilities=[])
+  def apply(template_file, parameters, disable_rollback=false, capabilities=[], policy_file=nil, bucket=nil)
     template = File.read(template_file)
+    policy = File.read(policy_file) unless policy_file.nil?
+    template = upload_template_to_s3(template, bucket)
     validation = validate(template)
     unless validation["valid"]
       puts "Unable to update - #{validation["response"][:code]} - #{validation["response"][:message]}"
@@ -28,9 +30,9 @@ class Stack
     end
     pending_operations = false
     if deployed
-      pending_operations = update(template, parameters, capabilities)
+      pending_operations = update(template, parameters, capabilities, policy)
     else
-      pending_operations = create(template, parameters, disable_rollback, capabilities)
+      pending_operations = create(template, parameters, disable_rollback, capabilities, policy)
     end
     wait_until_end if pending_operations
     return deploy_succeded?
@@ -135,11 +137,12 @@ class Stack
     }
   end
 
-  def update(template, parameters, capabilities)
+  def update(template, parameters, capabilities, policy)
     stack.update({
       :template => template,
       :parameters => parameters,
-      :capabilities => capabilities
+      :capabilities => capabilities,
+      :stack_policy_body => policy
     })
     return true
   rescue ::AWS::CloudFormation::Errors::ValidationError => e
@@ -147,9 +150,16 @@ class Stack
     return false
   end
 
-  def create(template, parameters, disable_rollback, capabilities)
+  def create(template, parameters, disable_rollback, capabilities, policy)
     puts "Initializing stack creation..."
-    @cf.stacks.create(name, template, :parameters => parameters, :disable_rollback => disable_rollback, :capabilities => capabilities)
+    @cf.stacks.create(
+      name,
+      template,
+      :parameters => parameters,
+      :disable_rollback => disable_rollback,
+      :capabilities => capabilities,
+      :stack_policy_body => policy
+    )
     sleep 10
     return true
   rescue ::AWS::CloudFormation::Errors::ValidationError => e
@@ -171,6 +181,18 @@ class Stack
           puts "Some resources are not up."
         end
       end
+    end
+  end
+
+  def upload_template_to_s3(template, bucket_name)
+    if bucket_name.nil? or bucket_name.to_s.strip == ''
+      return template
+    else
+      bucket = AWS::S3.new.buckets[bucket_name]
+      abort("Error: Bucket '#{bucket_name}' does not exist!") unless bucket.exists?
+      object_name = "#{Time.now.strftime "%Y-%m-%d_%H-%M-%S"}_#{rand(10000..99999)}_#{stack.name}.template"
+      object = bucket.objects.create object_name, template
+      return object.public_url
     end
   end
 end
