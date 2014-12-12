@@ -30,7 +30,8 @@ class Stack
     end
     pending_operations = false
     if deployed
-      pending_operations = update(template, parameters, capabilities, policy)
+      updated_parameters = Hash[ stack.parameters.update(parameters).map { |k,v| [k, v.to_s] } ]
+      pending_operations = update(template, updated_parameters, capabilities, policy)
     else
       pending_operations = create(template, parameters, disable_rollback, capabilities, policy)
     end
